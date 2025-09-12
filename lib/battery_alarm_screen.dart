@@ -42,7 +42,7 @@ Future<void> _performBatteryCheck() async {
     if (batteryLevel >= threshold && isCharging) {
       // Show notification and try to play alarm
       await _showAlarmNotification(batteryLevel, threshold);
-     // await _playBackgroundAlarm();
+      await _playBackgroundAlarm();
     }
   } catch (e) {
     print('Background check error: $e');
@@ -61,9 +61,7 @@ Future<void> _showAlarmNotification(int batteryLevel, int threshold) async {
     priority: Priority.high,
     playSound: true,
     sound: RawResourceAndroidNotificationSound('alarm'),
-    audioAttributesUsage: AudioAttributesUsage.alarm, // 🔥 plays like an alarm
-    fullScreenIntent: true, // 🔥 wakes screen and acts like alarm
-    ongoing: true,
+    ongoing: true, // Makes notification persistent
     autoCancel: false,
   );
 
@@ -306,7 +304,7 @@ class _BatteryAlarmScreenState extends State<BatteryAlarmScreen>
 
   Future<void> _showForegroundNotification(int batteryLevel) async {
     const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'battery_alarm_channel_v2', // 👈 new channel ID
+      'battery_alarm_channel',
       'Battery Alarm',
       channelDescription: 'Regular battery alarm notifications',
       importance: Importance.max,
@@ -335,40 +333,6 @@ class _BatteryAlarmScreenState extends State<BatteryAlarmScreen>
     );
   }
 
-  // Future<void> _playAlarm() async {
-  //   if (_isAlarmPlaying) return;
-  //   setState(() {
-  //     _isAlarmPlaying = true;
-  //   });
-  //
-  //   try {
-  //     // Set audio attributes for alarm playback
-  //     await _audioPlayer.setAudioContext(AudioContext(
-  //       android: AudioContextAndroid(
-  //         isSpeakerphoneOn: true,
-  //         stayAwake: true,
-  //         contentType: AndroidContentType.music,
-  //         usageType: AndroidUsageType.alarm,
-  //         audioFocus: AndroidAudioFocus.gain,
-  //       ),
-  //     ));
-  //
-  //     if (_customAlarmPath != null && File(_customAlarmPath!).existsSync()) {
-  //       await _audioPlayer.play(DeviceFileSource(_customAlarmPath!));
-  //     } else {
-  //       await _audioPlayer.play(AssetSource("sounds/alarm.mp3",));
-  //     }
-  //
-  //     await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-  //     HapticFeedback.vibrate();
-  //
-  //   } catch (e) {
-  //     print('Error playing alarm: $e');
-  //     setState(() {
-  //       _isAlarmPlaying = false;
-  //     });
-  //   }
-  // }
   Future<void> _playAlarm() async {
     if (_isAlarmPlaying) return;
 
@@ -377,32 +341,24 @@ class _BatteryAlarmScreenState extends State<BatteryAlarmScreen>
     });
 
     try {
-      // Cancel any previous alarm
-      await _notifications.cancel(0);
+      // Set audio attributes for alarm playback
+      await _audioPlayer.setAudioContext(AudioContext(
+        android: AudioContextAndroid(
+          isSpeakerphoneOn: true,
+          stayAwake: true,
+          contentType: AndroidContentType.music,
+          usageType: AndroidUsageType.alarm,
+          audioFocus: AndroidAudioFocus.gain,
+        ),
+      ));
 
-      // Android-specific details
-      var androidDetails = AndroidNotificationDetails(
-        'alarm_channel',
-        'Battery Alarm',
-        channelDescription: 'Battery level alarm',
-        importance: Importance.max,
-        priority: Priority.high,
-        playSound: true,
-        sound: RawResourceAndroidNotificationSound('alarm'), // name without extension
-        ongoing: true, // makes it persistent
-      );
+      if (_customAlarmPath != null && File(_customAlarmPath!).existsSync()) {
+        await _audioPlayer.play(DeviceFileSource(_customAlarmPath!));
+      } else {
+        await _audioPlayer.play(AssetSource("sounds/alarm.mp3"));
+      }
 
-      var notificationDetails = NotificationDetails(android: androidDetails);
-
-      // Show notification which plays the alarm sound
-      await _notifications.show(
-        0,
-        'Battery Alarm',
-        'Battery reached target percentage!',
-        notificationDetails,
-      );
-
-      // Optional: vibrate
+      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
       HapticFeedback.vibrate();
 
     } catch (e) {
@@ -413,20 +369,12 @@ class _BatteryAlarmScreenState extends State<BatteryAlarmScreen>
     }
   }
 
-  // Future<void> _stopAlarm() async {
-  //   setState(() {
-  //     _isAlarmPlaying = false;
-  //   });
-  //   await _audioPlayer.stop();
-  //   // Cancel notification when alarm stops
-  //   await _notifications.cancel(0);
-  // }
   Future<void> _stopAlarm() async {
     setState(() {
       _isAlarmPlaying = false;
     });
-
-    // Cancel notification to stop sound
+    await _audioPlayer.stop();
+    // Cancel notification when alarm stops
     await _notifications.cancel(0);
   }
 
@@ -578,7 +526,7 @@ class _BatteryAlarmScreenState extends State<BatteryAlarmScreen>
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: _getBatteryColor().withOpacity(0.1),
+                  color: _getBatteryColor().withValues(alpha: .1),
                   borderRadius: BorderRadius.circular(15),
                   border: Border.all(color: _getBatteryColor(), width: 2),
                 ),
