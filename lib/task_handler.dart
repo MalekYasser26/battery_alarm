@@ -41,6 +41,7 @@ class MyTaskHandler extends TaskHandler {
   }
 
   @override
+  @override
   void onReceiveData(Object data) {
     print('onReceiveData: $data');
 
@@ -49,6 +50,7 @@ class MyTaskHandler extends TaskHandler {
         final charging = data['charging'] as bool? ?? false;
         final rawLevel = data['level'];
         final level = rawLevel is int ? rawLevel : (rawLevel is double ? rawLevel.round() : -1);
+
 
 
         FlutterForegroundTask.updateService(

@@ -144,7 +144,8 @@ bool isCharging = false;
       await _stopService();
     }
     setState(() {}); // Refresh UI
-  }  void _listenToBatteryState() {
+  }
+  void _listenToBatteryState() {
     _batteryStateSubscription = battery.onBatteryStateChanged.listen((BatteryState state) async {
       bool wasCharging = isCharging;
       setState(() {
@@ -163,6 +164,12 @@ bool isCharging = false;
       } else if (!isCharging && wasCharging) {
         _pulseController.stop();
         _pulseController.reset();
+
+        // Stop alarm and service when charger is removed
+        if (_isServiceRunning) {
+          print("🔌 Charger removed - stopping alarm and service");
+          await _stopService();
+        }
       }
 
       // Send data to background task
@@ -183,8 +190,8 @@ bool isCharging = false;
       print("⚡ MAIN: Service running, charging & threshold reached at $level%");
       await AlarmManager().startAlarm();
       setState(() {}); // Refresh UI to show alarm button
-    }}
-  @override
+    }
+  }  @override
   void initState() {
     super.initState();
     _listenToBatteryState();
@@ -224,13 +231,14 @@ bool isCharging = false;
   }
 
   @override
+  @override
   void dispose() {
     _pulseController.dispose();
     _batteryController.dispose();
     FlutterForegroundTask.removeTaskDataCallback(_onReceiveTaskData);
     _taskDataListenable.dispose();
     _batteryStateSubscription?.cancel();
-    AlarmManager().dispose(); // Add this line
+    AlarmManager().dispose();
     super.dispose();
   }
 
@@ -753,7 +761,8 @@ bool isCharging = false;
           builder: (context, isAlarmActive, _) {
             if (!isAlarmActive) return const SizedBox.shrink();
 
-            return Container(
+            return _isServiceRunning==true?
+            Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               margin: const EdgeInsets.only(bottom: 16),
@@ -784,7 +793,7 @@ bool isCharging = false;
                   ),
                 ],
               ),
-            );
+            ) : SizedBox.shrink();
           },
         ),
 
@@ -870,8 +879,8 @@ bool isCharging = false;
           valueListenable: ValueNotifier(AlarmManager().isAlarmActive),
           builder: (context, isAlarmActive, _) {
             if (!isAlarmActive) return const SizedBox.shrink();
-
-            return Column(
+            return _isServiceRunning==true ?
+            Column(
               children: [
                 Container(
                   width: double.infinity,
@@ -908,10 +917,29 @@ bool isCharging = false;
                 ),
                 const SizedBox(height: 16),
               ],
-            );
+            ) : SizedBox.shrink();
           },
         ),
 
+        // Test button
+        TextButton.icon(
+          onPressed: () {
+            setState(() {
+              isCharging = !isCharging;
+            });
+          },
+          icon: Icon(
+            isCharging ? Icons.power_off : Icons.power,
+            color: Colors.grey[600],
+          ),
+          label: Text(
+            'Toggle Charging State (Test)',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
       ],
     );
   }}
