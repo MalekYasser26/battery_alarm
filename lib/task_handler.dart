@@ -1,74 +1,72 @@
 import 'dart:async';
 
 import 'package:battery_alarm/constants.dart';
-import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 class MyTaskHandler extends TaskHandler {
   static const String incrementCountCommand = 'incrementCount';
   static const String checkForThresholdCommand = 'thresholdCheck';
+  static const String requestStatusFromTaskCommand = 'task_request_status';
 
-  final battery = Battery();
-  StreamSubscription<BatteryState>? _batteryStateSubscription;
   int _count = 0;
+
+  // Cache of the last battery info received from the main isolate
+  bool? _lastCharging;
+  int? _lastLevel;
 
   void _incrementCount() {
     _count++;
     FlutterForegroundTask.updateService(
-      notificationTitle: 'Hello MyTaskHandler :)',
-      notificationText: 'count: $_count',
+      notificationTitle: 'Battery Alarm Active',
+      notificationText: 'Count: $_count',
     );
-    FlutterForegroundTask.sendDataToMain(_count);
+    FlutterForegroundTask.sendDataToMain({'type': 'count', 'value': _count});
   }
-
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     print('onStart(starter: ${starter.name})');
     _incrementCount();
-    listenToBatteryState();
+
+    // Optionally ask the main isolate to send an initial battery status
+    // The main isolate should listen for this and reply with battery data.
+    FlutterForegroundTask.sendDataToMain({'type': 'task_started'});
   }
 
   @override
   void onRepeatEvent(DateTime timestamp) {
+    // Called periodically per your ForegroundTaskOptions
     _incrementCount();
-    // no need to re-subscribe each time
   }
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
     print('onDestroy(isTimeout: $isTimeout)');
-    await _batteryStateSubscription?.cancel();
-    _batteryStateSubscription = null;
   }
 
   @override
   void onReceiveData(Object data) {
     print('onReceiveData: $data');
-    if (data == incrementCountCommand) {
-      _incrementCount();
-    }
-    if (data == checkForThresholdCommand) {
-      // optional: manually send current charging state
-      FlutterForegroundTask.sendDataToMain(isCharging);
-    }
-  }
-}
-  // Called when the notification button is pressed.
-  @override
-  void onNotificationButtonPressed(String id) {
-    print('onNotificationButtonPressed: $id');
-  }
 
-  // Called when the notification itself is pressed.
-  @override
-  void onNotificationPressed() {
-    print('onNotificationPressed');
-  }
+    if (data is Map) {
+      if (data.containsKey('charging') && data.containsKey('level')) {
+        final charging = data['charging'] as bool? ?? false;
+        final rawLevel = data['level'];
+        final level = rawLevel is int ? rawLevel : (rawLevel is double ? rawLevel.round() : -1);
 
-  // Called when the notification itself is dismissed.
-  @override
-  void onNotificationDismissed() {
-    print('onNotificationDismissed');
-  }
+        _lastCharging = charging;
+        _lastLevel = level;
 
+        FlutterForegroundTask.updateService(
+          notificationTitle: 'Battery Alarm',
+          notificationText: 'Charging: $charging · Level: $level%',
+        );
+
+        // Only trigger alarm logic in the task handler if needed
+        // The main isolate should handle the primary alarm triggering
+        if (charging && level >= chargingThreshold) {
+          print('⚡ TASK: Charging & threshold reached at $level%');
+          // Don't trigger alarm here - let main isolate handle it
+        }
+        return;
+      }}}}

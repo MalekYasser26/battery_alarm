@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:audioplayers/audioplayers.dart';
+import 'package:battery_alarm/alarm_manager.dart';
+import 'package:battery_alarm/audio_picker_button.dart';
 import 'package:battery_alarm/constants.dart';
 import 'package:battery_alarm/main.dart';
 import 'package:battery_alarm/task_handler.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -26,7 +30,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   int _batteryLevel = 75;
   var battery = Battery();
   StreamSubscription<BatteryState>? _batteryStateSubscription;
-
+bool isCharging = false;
   bool _isServiceRunning = false;
 
   Future<void> _requestPermissions() async {
@@ -71,11 +75,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   Future<ServiceRequestResult> _startService() async {
+    ServiceRequestResult result;
+
     if (await FlutterForegroundTask.isRunningService) {
-      return FlutterForegroundTask.restartService();
-    }
-    else {
-      final result = await FlutterForegroundTask.startService(
+      result = await FlutterForegroundTask.restartService();
+    } else {
+      result = await FlutterForegroundTask.startService(
         serviceId: 256,
         notificationTitle: 'Battery Alarm Active',
         notificationText: 'Monitoring battery level at ${chargingThreshold.round()}%',
@@ -86,61 +91,105 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         notificationInitialRoute: '/main',
         callback: startCallback,
       );
-      if (isCharging==true){
-        print("YASSIR");
-      }
-        setState(() {
-          _isServiceRunning = true;
-        });
-        _pulseController.repeat(reverse: true);
-
-
-      return result;
     }
-  }
 
-  Future<ServiceRequestResult> _stopService() async {
-    final result = await FlutterForegroundTask.stopService();
+    setState(() {
+      _isServiceRunning = true;
+    });
 
+    // Enable alarm system and check current conditions immediately
+    AlarmManager().setServiceActive(true);
+    await _checkAlarmCondition();
 
-      setState(() {
-        _isServiceRunning = false;
-      });
-      _pulseController.stop();
-      _pulseController.reset();
-
+    _pulseController.repeat(reverse: true);
 
     return result;
   }
+  Future<ServiceRequestResult> _stopService() async {
+    final result = await FlutterForegroundTask.stopService();
 
-  void _onReceiveTaskData(Object data) {
-    print('onReceiveTaskData: $data');
-    _taskDataListenable.value = data;
+    setState(() {
+      _isServiceRunning = false;
+    });
+
+    // Disable alarm system - this will also stop any active alarm
+    AlarmManager().setServiceActive(false);
+
+    _pulseController.stop();
+    _pulseController.reset();
+
+    setState(() {}); // Refresh UI to hide alarm button if it was showing
+
+    return result;
+  }
+  Future<void> _onReceiveTaskData(Object data) async {
+    // data is what the TaskHandler sent (task -> main)
+    if (data is Map && data['type'] == 'task_request_status') {
+      final level = await battery.batteryLevel;
+      FlutterForegroundTask.sendDataToTask({
+        'type': 'reply_status',
+        'charging': isCharging,
+        'level': level,
+      });
+      return;
+    }
   }
 
   void _incrementCount() {
     FlutterForegroundTask.sendDataToTask(MyTaskHandler.incrementCountCommand);
   }
-  void _listenToBatteryState() {
-    _batteryStateSubscription = battery.onBatteryStateChanged.listen((BatteryState state) {
+
+  Future<void> playSavedAlarmAudio() async {
+    await AlarmManager().startAlarm();
+  }
+
+  Future<void> _stopAlarm() async {
+    await AlarmManager().stopAlarm();
+    // When manually stopping alarm, also stop the service
+    if (_isServiceRunning) {
+      await _stopService();
+    }
+    setState(() {}); // Refresh UI
+  }  void _listenToBatteryState() {
+    _batteryStateSubscription = battery.onBatteryStateChanged.listen((BatteryState state) async {
       bool wasCharging = isCharging;
       setState(() {
         isCharging = state == BatteryState.charging;
       });
+
+      // Update battery level for UI
+      final level = await battery.batteryLevel;
+      setState(() {
+        _batteryLevel = level;
+      });
+
+      // Pulse animation logic
       if (isCharging && !wasCharging) {
-        // just started charging → start pulsing
         _pulseController.repeat(reverse: true);
       } else if (!isCharging && wasCharging) {
-        // just stopped charging → stop/reset pulsing
         _pulseController.stop();
         _pulseController.reset();
       }
-    });
-      // if (wasCharging && !isCharging && _isAlarmPlaying) {
-      //   _stopAlarm();
-      // }
 
+      // Send data to background task
+      FlutterForegroundTask.sendDataToTask({
+        "charging": isCharging,
+        "level": level,
+      });
+
+      // Check alarm condition only if service is running
+      await _checkAlarmCondition();
+    });
   }
+  Future<void> _checkAlarmCondition() async {
+    if (!_isServiceRunning) return;
+
+    final level = await battery.batteryLevel;
+    if (isCharging && level >= chargingThreshold) {
+      print("⚡ MAIN: Service running, charging & threshold reached at $level%");
+      await AlarmManager().startAlarm();
+      setState(() {}); // Refresh UI to show alarm button
+    }}
   @override
   void initState() {
     super.initState();
@@ -186,6 +235,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _batteryController.dispose();
     FlutterForegroundTask.removeTaskDataCallback(_onReceiveTaskData);
     _taskDataListenable.dispose();
+    _batteryStateSubscription?.cancel();
+    AlarmManager().dispose(); // Add this line
     super.dispose();
   }
 
@@ -240,6 +291,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       floating: true,
       pinned: true,
       elevation: 0,
+      scrolledUnderElevation: 0,
       backgroundColor: Colors.transparent,
       flexibleSpace: FlexibleSpaceBar(
         centerTitle: true,
@@ -373,6 +425,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                     ],
                   ),
                   const SizedBox(height: 28),
+                  AudioPickerButton(),
+                  const SizedBox(height: 28),
+
                   Container(
                     height: 12,
                     decoration: BoxDecoration(
@@ -611,9 +666,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               ),
               child: Slider(
                 value: chargingThreshold,
-                min: 50.0,
+                min: 10.0,
                 max: 100.0,
-                divisions: 10,
+                divisions: 50,
                 label: '${chargingThreshold.round()}%',
                 onChanged: (double value) {
                   setState(() {
@@ -813,7 +868,48 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           ),
         ),
 
-        // Control buttons
+        // Alarm status indicator
+        ValueListenableBuilder<bool>(
+          valueListenable: ValueNotifier(AlarmManager().isAlarmActive),
+          builder: (context, isAlarmActive, _) {
+            if (!isAlarmActive) return const SizedBox.shrink();
+
+            return Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: Colors.orange,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Alarm Playing',
+                    style: TextStyle(
+                      color: Colors.orange[700],
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+
+        // Service control buttons
         Row(
           children: [
             Expanded(
@@ -826,7 +922,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.green.withValues(alpha:0.3),
+                      color: Colors.green.withValues(alpha: 0.3),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -861,7 +957,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.red.withValues(alpha: .3),
+                      color: Colors.red.withValues(alpha: 0.3),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -890,6 +986,53 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
         const SizedBox(height: 16),
 
+        // Stop Alarm button - only show when alarm is active
+        ValueListenableBuilder<bool>(
+          valueListenable: ValueNotifier(AlarmManager().isAlarmActive),
+          builder: (context, isAlarmActive, _) {
+            if (!isAlarmActive) return const SizedBox.shrink();
+
+            return Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.orange.shade400, Colors.orange.shade600],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.orange.withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton.icon(
+                    onPressed: _stopAlarm,
+                    icon: const Icon(Icons.alarm_off, size: 24),
+                    label: const Text(
+                      'Stop Alarm',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            );
+          },
+        ),
+
         // Test button
         TextButton.icon(
           onPressed: () {
@@ -911,5 +1054,4 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         ),
       ],
     );
-  }
-}
+  }}
