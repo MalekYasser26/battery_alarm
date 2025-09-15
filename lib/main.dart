@@ -1,40 +1,39 @@
-import 'package:battery_alarm/battery_alarm_screen.dart';
+import 'dart:async';
+import 'dart:io';
+
+import 'package:battery_alarm/main_screen.dart';
+import 'package:battery_alarm/task_handler.dart';
+import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  FlutterForegroundTask.init(
-    androidNotificationOptions: AndroidNotificationOptions(
-      channelId: 'alarm_channel',
-      channelName: 'Battery Alarm',
-      channelDescription: 'Battery level alarm is running',
-      channelImportance: NotificationChannelImportance.HIGH,
-      priority: NotificationPriority.HIGH,
-    ),
-    foregroundTaskOptions: const ForegroundTaskOptions(
-      interval: 1000, // Task callback interval in milliseconds
-      isOnceEvent: false,
-      autoRunOnBoot: false,
-      allowWakeLock: true,
-      allowWifiLock: true,
-    ), iosNotificationOptions: IOSNotificationOptions(),
-  );
-
-  runApp(MyApp());
+  // Initialize port for communication between TaskHandler and UI.
+  FlutterForegroundTask.initCommunicationPort();
+  runApp(const ExampleApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+// The callback function should always be a top-level or static function.
+@pragma('vm:entry-point')
+void startCallback() {
+  FlutterForegroundTask.setTaskHandler(MyTaskHandler());
+}
+
+
+class ExampleApp extends StatelessWidget {
+  const ExampleApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Battery alarm',
-      home:  BatteryAlarmScreen(),
       debugShowCheckedModeBanner: false,
+      routes: {
+        '/': (context) => const MainScreen(),
+      },
+      initialRoute: '/',
     );
   }
 }
+
+
 
