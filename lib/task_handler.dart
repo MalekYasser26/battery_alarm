@@ -8,26 +8,22 @@ class MyTaskHandler extends TaskHandler {
   static const String checkForThresholdCommand = 'thresholdCheck';
   static const String requestStatusFromTaskCommand = 'task_request_status';
 
-  int _count = 0;
 
   // Cache of the last battery info received from the main isolate
-  bool? _lastCharging;
-  int? _lastLevel;
 
-  void _incrementCount() {
-    _count++;
-    FlutterForegroundTask.updateService(
-      notificationTitle: 'Battery Alarm Active',
-      notificationText: 'Count: $_count',
-    );
-    FlutterForegroundTask.sendDataToMain({'type': 'count', 'value': _count});
-  }
+  // void _incrementCount() {
+  //   _count++;
+  //   FlutterForegroundTask.updateService(
+  //     notificationTitle: 'Battery Alarm Active',
+  //     notificationText: 'Count: $_count',
+  //   );
+  //   FlutterForegroundTask.sendDataToMain({'type': 'count', 'value': _count});
+  // }
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     print('onStart(starter: ${starter.name})');
-    _incrementCount();
-
+   // _incrementCount();
     // Optionally ask the main isolate to send an initial battery status
     // The main isolate should listen for this and reply with battery data.
     FlutterForegroundTask.sendDataToMain({'type': 'task_started'});
@@ -36,7 +32,7 @@ class MyTaskHandler extends TaskHandler {
   @override
   void onRepeatEvent(DateTime timestamp) {
     // Called periodically per your ForegroundTaskOptions
-    _incrementCount();
+  //  _incrementCount();
   }
 
   @override
@@ -54,8 +50,6 @@ class MyTaskHandler extends TaskHandler {
         final rawLevel = data['level'];
         final level = rawLevel is int ? rawLevel : (rawLevel is double ? rawLevel.round() : -1);
 
-        _lastCharging = charging;
-        _lastLevel = level;
 
         FlutterForegroundTask.updateService(
           notificationTitle: 'Battery Alarm',

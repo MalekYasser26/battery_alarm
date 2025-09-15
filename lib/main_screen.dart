@@ -1,16 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:battery_alarm/alarm_manager.dart';
 import 'package:battery_alarm/audio_picker_button.dart';
 import 'package:battery_alarm/constants.dart';
 import 'package:battery_alarm/main.dart';
-import 'package:battery_alarm/task_handler.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -135,9 +132,6 @@ bool isCharging = false;
     }
   }
 
-  void _incrementCount() {
-    FlutterForegroundTask.sendDataToTask(MyTaskHandler.incrementCountCommand);
-  }
 
   Future<void> playSavedAlarmAudio() async {
     await AlarmManager().startAlarm();
@@ -265,8 +259,6 @@ bool isCharging = false;
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
                       _buildBatteryStatusCard(),
-                      const SizedBox(height: 24),
-                      _buildCounterCard(),
                       const SizedBox(height: 24),
                       _buildThresholdCard(),
                       const SizedBox(height: 24),
@@ -452,119 +444,6 @@ bool isCharging = false;
     );
   }
 
-  Widget _buildCounterCard() {
-    return ValueListenableBuilder(
-      valueListenable: _taskDataListenable,
-      builder: (context, data, _) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha:0.08),
-                blurRadius: 20,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.orange.shade400, Colors.pink.shade400],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const Icon(
-                        Icons.analytics,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Text(
-                      'Task Counter',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.orange.shade50, Colors.pink.shade50],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.orange.shade100),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        'Count from TaskHandler:',
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Colors.grey[700],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '$data',
-                        style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange[700],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _incrementCount,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 4,
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.add_circle_outline),
-                        SizedBox(width: 8),
-                        Text(
-                          'Increment Counter',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
 
   Widget _buildThresholdCard() {
     return Container(
@@ -1033,25 +912,6 @@ bool isCharging = false;
           },
         ),
 
-        // Test button
-        TextButton.icon(
-          onPressed: () {
-            setState(() {
-              isCharging = !isCharging;
-            });
-          },
-          icon: Icon(
-            isCharging ? Icons.power_off : Icons.power,
-            color: Colors.grey[600],
-          ),
-          label: Text(
-            'Toggle Charging State (Test)',
-            style: TextStyle(
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
       ],
     );
   }}
